@@ -1,0 +1,6 @@
+{
+  "name": "EcoSort AI",
+  "description": "A smart recycling assistant for Kazakhstan that uses AI to classify waste and find nearby recycling points.",
+  "requestFramePermissions": ["camera", "geolocation"],
+  "majorCapabilities": []
+}

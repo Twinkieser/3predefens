@@ -1,0 +1,16 @@
+{
+  "name": "EcoSort AI",
+  "short_name": "EcoSort",
+  "description": "Smart recycling assistant for Kazakhstan",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#16a34a",
+  "icons": [
+    {
+      "src": "https://cdn-icons-png.flaticon.com/512/3299/3299935.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

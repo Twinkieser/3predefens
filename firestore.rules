@@ -1,0 +1,71 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // 0. Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Helpers ---
+    function isSignedIn() { return request.auth != null; }
+    function isOwner(userId) { return isSignedIn() && request.auth.uid == userId; }
+    function isVerified() { return isSignedIn() && (request.auth.token.email_verified == true || request.auth.token.firebase.sign_in_provider == 'google.com'); }
+    function incoming() { return request.resource.data; }
+    function existing() { return resource.data; }
+    
+    function isValidId(id) { 
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); 
+    }
+
+    // --- Entity Validations ---
+    function isValidUser(data) {
+      return data.uid is string && data.uid == request.auth.uid &&
+             data.points is int && data.points >= 0 &&
+             data.level in ['Beginner', 'Explorer', 'Recycler', 'Eco Hero', 'Eco Warrior'] &&
+             data.keys().hasAll(['uid', 'email', 'points', 'level']) &&
+             data.keys().size() <= 10;
+    }
+
+    function isValidScan(data) {
+      return data.uid is string && data.uid == request.auth.uid &&
+             data.category in ['plastic', 'glass', 'paper', 'metal', 'cardboard', 'trash'] &&
+             data.confidence is number && data.confidence >= 0 && data.confidence <= 1 &&
+             data.pointsEarned is int && data.pointsEarned >= 0 &&
+             data.keys().hasAll(['uid', 'category', 'confidence', 'pointsEarned', 'createdAt']) &&
+             data.keys().size() <= 12;
+    }
+
+    // --- Collection Rules ---
+    match /users/{userId} {
+      allow get: if isSignedIn();
+      allow list: if isSignedIn() && resource.data.points > 0; // For leaderboard queries
+      
+      allow create: if isOwner(userId) && isVerified() && isValidUser(incoming());
+      
+      allow update: if isOwner(userId) && isVerified() && (
+        // Action: Update points/stats after scan or daily
+        (incoming().diff(existing()).affectedKeys().hasOnly(['points', 'lastActive', 'level', 'streak', 'badges']) &&
+         incoming().points >= existing().points)
+      );
+    }
+
+    match /users/{userId}/scans/{scanId} {
+      allow list: if isOwner(userId);
+      allow get: if isOwner(userId);
+      
+      // Scans are immutable once created
+      allow create: if isOwner(userId) && isVerified() && 
+                    isValidId(scanId) && isValidScan(incoming()) &&
+                    incoming().createdAt == request.time;
+      
+      allow update, delete: if false;
+    }
+
+    // Global stats (leaderboard snapshots) if used
+    match /globalStats/leaderboard {
+      allow read: if isSignedIn();
+      allow write: if false; // System only
+    }
+  }
+}

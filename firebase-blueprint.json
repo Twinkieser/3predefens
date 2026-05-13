@@ -1,0 +1,69 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "Represents a user of the EcoSort AI platform.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string" },
+        "displayName": { "type": "string" },
+        "photoURL": { "type": "string" },
+        "points": { "type": "integer" },
+        "level": { "type": "string", "enum": ["Beginner", "Explorer", "Recycler", "Eco Hero", "Eco Warrior"] },
+        "badges": { "type": "array", "items": { "type": "string" } },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "lastActive": { "type": "string", "format": "date-time" },
+        "streak": { "type": "integer" }
+      },
+      "required": ["uid", "email", "points", "level"]
+    },
+    "Scan": {
+      "title": "Scan",
+      "description": "A classification scan made by a user.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "uid": { "type": "string" },
+        "imageUrl": { "type": "string" },
+        "category": { "type": "string", "enum": ["plastic", "glass", "paper", "metal", "cardboard", "trash"] },
+        "confidence": { "type": "number" },
+        "instructions": { "type": "string" },
+        "tips": { "type": "string" },
+        "pointsEarned": { "type": "integer" },
+        "materialType": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "category", "confidence", "pointsEarned", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profiles and aggregate stats."
+    },
+    "/users/{userId}/scans/{scanId}": {
+      "schema": "Scan",
+      "description": "Individual scan history for a specific user."
+    },
+    "/globalStats/leaderboard": {
+      "schema": {
+        "type": "object",
+        "properties": {
+          "topUsers": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "uid": { "type": "string" },
+                "displayName": { "type": "string" },
+                "points": { "type": "integer" }
+              }
+            }
+          }
+        }
+      },
+      "description": "System-wide leaderboard snapshot."
+    }
+  }
+}
