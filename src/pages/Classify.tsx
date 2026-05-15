@@ -5,11 +5,11 @@
 
 import React, { useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Camera, Upload, Loader2, CheckCircle2, AlertCircle, RefreshCcw, Info, Share2 } from 'lucide-react';
+import { Camera, Upload, Loader2, CheckCircle2, AlertCircle, RefreshCcw, Info, Share2, Sparkles } from 'lucide-react';
 import { User } from 'firebase/auth';
 import { classifyWaste } from '../services/ai';
 import { db, handleFirestoreError, OperationType } from '../lib/firebase';
-import { doc, setDoc, updateDoc, increment, collection } from 'firebase/firestore';
+import { doc, setDoc, updateDoc, increment, collection, serverTimestamp } from 'firebase/firestore';
 import { toast } from 'sonner';
 import { WasteCategory, getLevel } from '../types';
 import confetti from 'canvas-confetti';
@@ -84,14 +84,14 @@ export default function Classify({ user, onLogin }: ClassifyProps) {
         instructions: analysis.instructions,
         tips: analysis.tips,
         pointsEarned: points,
-        createdAt: Date.now()
+        createdAt: serverTimestamp()
       });
 
       // Update user points
       const userRef = doc(db, 'users', user!.uid);
       await updateDoc(userRef, {
         points: increment(points),
-        lastActive: Date.now()
+        lastActive: serverTimestamp()
       });
 
       toast.success(`+${points} points earned!`);
@@ -120,7 +120,7 @@ export default function Classify({ user, onLogin }: ClassifyProps) {
   };
 
   return (
-    <div className="min-h-full bg-accent p-6 flex flex-col space-y-6 pb-24">
+    <div className="min-h-full bg-accent p-6 flex flex-col space-y-6">
       <div className="text-left space-y-1 px-2">
         <h1 className="text-2xl font-black text-primary-dark italic tracking-tighter">AI Classification</h1>
         <p className="text-primary-dark/50 text-xs font-bold uppercase tracking-widest">Environment First</p>
@@ -175,7 +175,7 @@ export default function Classify({ user, onLogin }: ClassifyProps) {
                     <Loader2 size={64} className="animate-spin text-primary-light" />
                     <Sparkles size={24} className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-white" />
                   </div>
-                  <p className="font-black tracking-[0.2em] text-[10px] uppercase">Processing with Gemini AI</p>
+                  <p className="font-medium tracking-wide text-sm opacity-90 animate-pulse">Пожалуйста, подождите немного...</p>
                 </motion.div>
               )}
             </AnimatePresence>

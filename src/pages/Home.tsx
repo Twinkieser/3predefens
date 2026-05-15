@@ -15,7 +15,7 @@ interface HomeProps {
 
 export default function Home({ user, onNavigate }: HomeProps) {
   return (
-    <div className="p-6 space-y-6 pb-24">
+    <div className="p-6 space-y-6">
       {/* Hero Bento (Scan Area) */}
       <section>
         <motion.div
@@ -80,19 +80,22 @@ export default function Home({ user, onNavigate }: HomeProps) {
            initial={{ opacity: 0, x: 20 }}
            animate={{ opacity: 1, x: 0 }}
            transition={{ delay: 0.2 }}
-           className="bento-card bg-primary-dark p-6 flex flex-col justify-between text-white"
+           className="bento-card bg-primary p-6 flex flex-col justify-between text-white shadow-lg shadow-primary/20 border-none"
         >
            <div>
-              <p className="text-[9px] font-bold uppercase tracking-widest text-primary-light/50 mb-2">Streak</p>
+              <div className="flex justify-between items-start mb-2">
+                <p className="text-[10px] font-black uppercase tracking-widest text-black">Streak</p>
+                <Zap size={14} className="text-black fill-black" />
+              </div>
               <div className="flex gap-1">
-                 <div className="w-full h-1 bg-white rounded-full"></div>
-                 <div className="w-full h-1 bg-white rounded-full"></div>
-                 <div className="w-full h-1 bg-white/20 rounded-full"></div>
+                 <div className="w-full h-1 bg-black/20 rounded-full"></div>
+                 <div className="w-full h-1 bg-black/20 rounded-full"></div>
+                 <div className="w-full h-1 bg-black/10 rounded-full"></div>
               </div>
            </div>
            <div className="mt-4">
-              <h3 className="text-2xl font-black">3 Days</h3>
-              <p className="text-[9px] opacity-70 font-medium">Keep it up!</p>
+              <h3 className="text-3xl font-black drop-shadow-sm text-black">3 Days</h3>
+              <p className="text-[10px] text-black/60 font-black uppercase tracking-tight mt-0.5">Keep it up!</p>
            </div>
         </motion.div>
       </div>

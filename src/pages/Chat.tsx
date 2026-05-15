@@ -132,7 +132,7 @@ export default function ChatPage({ user }: { user: User | null }) {
       </div>
 
       {/* Input */}
-      <div className="p-6 bg-white border-t border-slate-100 pb-24">
+      <div className="p-6 bg-white border-t border-slate-100">
         <form 
           onSubmit={handleSend}
           className="bg-slate-50 border border-slate-100 rounded-2xl flex items-center p-2 focus-within:ring-2 focus-within:ring-primary/20 transition-shadow"
@@ -154,10 +154,7 @@ export default function ChatPage({ user }: { user: User | null }) {
             <Send size={18} />
           </button>
         </form>
-        <p className="text-[10px] text-center text-slate-400 mt-3 flex items-center justify-center space-x-1">
-          <Sparkles size={10} />
-          <span>AI response powered by Gemini</span>
-        </p>
+
       </div>
     </div>
   );

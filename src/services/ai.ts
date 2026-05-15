@@ -90,3 +90,37 @@ export async function getEcoChatResponse(message: string, history: { role: 'user
 
   return response.text;
 }
+
+export async function generateAvatar(displayName: string) {
+  const model = "gemini-2.5-flash-image";
+  const prompt = `Create a unique, abstract, artistic avatar for a user named '${displayName}'. 
+  Theme: Environmentalism, circular economy, and nature.
+  Visual Style: High-quality, clean, minimalist abstract vector art. Think geometric shapes, flowing organic lines, or stylized natural motifs.
+  Color Palette: Vibrant greens, deep teals, earthy browns, and sunny yellows.
+  Mood: Innovative, positive, and sustainable.
+  Constraints: No text, no realistic human faces, no complex backgrounds. Centered composition. Square aspect ratio.`;
+
+  try {
+    const response = await ai.models.generateContent({
+      model,
+      contents: {
+        parts: [{ text: prompt }]
+      },
+      config: {
+        imageConfig: {
+          aspectRatio: "1:1"
+        }
+      }
+    });
+
+    const parts = response.candidates?.[0]?.content?.parts || [];
+    for (const part of parts) {
+      if (part.inlineData) {
+        return `data:image/png;base64,${part.inlineData.data}`;
+      }
+    }
+  } catch (error) {
+    console.error("Error generating avatar:", error);
+  }
+  return null;
+}

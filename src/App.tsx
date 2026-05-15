@@ -6,7 +6,7 @@
 import React, { useState, useEffect } from 'react';
 import { auth, googleProvider } from './lib/firebase';
 import { signInWithPopup, onAuthStateChanged, User, signOut } from 'firebase/auth';
-import { Home, Map as MapIcon, Camera, MessageSquare, User as UserIcon, Trophy, LogOut } from 'lucide-react';
+import { Home, Map as MapIcon, Camera, MessageSquare, User as UserIcon, Trophy, LogOut, Zap } from 'lucide-react';
 import { Toaster, toast } from 'sonner';
 import { AnimatePresence, motion } from 'motion/react';
 
@@ -17,8 +17,10 @@ import MapPage from './pages/Map';
 import ChatPage from './pages/Chat';
 import ProfilePage from './pages/Profile';
 import LeaderboardPage from './pages/Leaderboard';
+import ReportsPage from './pages/Reports';
+import OnboardingTour from './components/OnboardingTour';
 
-type Tab = 'home' | 'classify' | 'map' | 'chat' | 'profile' | 'leaderboard';
+type Tab = 'home' | 'classify' | 'map' | 'chat' | 'profile' | 'leaderboard' | 'reports';
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
@@ -74,15 +76,17 @@ export default function App() {
       case 'classify': return <ClassifyPage user={user} onLogin={handleLogin} />;
       case 'map': return <MapPage />;
       case 'chat': return <ChatPage user={user} />;
-      case 'profile': return <ProfilePage user={user} onLogin={handleLogin} onLogout={handleLogout} />;
+      case 'profile': return <ProfilePage user={user} onLogin={handleLogin} onLogout={handleLogout} onNavigate={(t: Tab) => setActiveTab(t)} />;
       case 'leaderboard': return <LeaderboardPage />;
+      case 'reports': return <ReportsPage user={user} onBack={() => setActiveTab('profile')} />;
       default: return <HomePage onNavigate={(t: Tab) => setActiveTab(t)} user={user} />;
     }
   };
 
   return (
-    <div className="flex flex-col h-screen max-w-md mx-auto bg-accent relative overflow-hidden font-sans">
+    <div className="flex flex-col h-screen max-w-md mx-auto bg-accent relative font-sans">
       <Toaster position="top-center" expand={true} richColors />
+      <OnboardingTour />
       
       {/* Header */}
       <header className="px-6 py-4 flex items-center justify-between shrink-0 bg-accent/80 backdrop-blur-md z-50">
@@ -90,17 +94,20 @@ export default function App() {
           <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center text-white font-bold shadow-lg shadow-primary/20">
             E
           </div>
-          <span className="text-lg font-black tracking-tighter text-primary-dark italic">EcoSort <span className="text-primary not-italic font-normal">AI</span></span>
-        </div>
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-1.5 bg-primary-light/50 px-2.5 py-1 rounded-full border border-primary-light">
-            <span className="w-1.5 h-1.5 bg-primary rounded-full animate-pulse"></span>
-            <span className="text-[10px] uppercase tracking-wider font-bold text-primary-dark">Astana</span>
+          <div className="flex flex-col">
+            <span className="text-sm font-black tracking-tighter text-primary-dark italic leading-none">EcoSort <span className="text-primary not-italic font-normal">AI</span></span>
+            <span className="text-[10px] font-bold text-primary-dark/40 uppercase tracking-tighter">Astana</span>
           </div>
+        </div>
+        <div className="flex items-center gap-2">
+           <div className="flex items-center gap-1.5 bg-primary/10 px-3 py-1.5 rounded-full border border-primary/20">
+              <Zap size={14} className="text-primary fill-primary" />
+              <span className="text-xs font-black text-primary-dark">3 Days</span>
+           </div>
         </div>
       </header>
 
-      <main className="flex-1 overflow-y-auto pb-24">
+      <main className="flex-1 overflow-y-auto">
         <AnimatePresence mode="wait">
           <motion.div
             key={activeTab}
@@ -116,37 +123,42 @@ export default function App() {
       </main>
 
       {/* Bottom Navigation */}
-      <nav className="absolute bottom-6 left-6 right-6 h-16 bg-white/90 backdrop-blur-lg rounded-3xl border border-primary-light flex items-center justify-around px-2 z-50 shadow-2xl shadow-primary/10">
+      <nav className="shrink-0 h-20 bg-white border-t border-primary-light flex items-center justify-around px-2 z-50">
         <NavButton 
+          id="nav-home"
           active={activeTab === 'home'} 
           onClick={() => setActiveTab('home')} 
           icon={<Home size={18} />} 
           label="Home" 
         />
         <NavButton 
+          id="nav-map"
           active={activeTab === 'map'} 
           onClick={() => setActiveTab('map')} 
           icon={<MapIcon size={18} />} 
           label="Map" 
         />
-        <div className="relative -top-6">
+        <div className="relative -top-3">
           <button
+            id="nav-classify"
             onClick={() => setActiveTab('classify')}
             className={cn(
-              "w-16 h-16 rounded-2xl flex items-center justify-center shadow-2xl transition-all hover:scale-105 active:scale-95",
+              "w-14 h-14 rounded-2xl flex items-center justify-center shadow-xl transition-all hover:scale-105 active:scale-95",
               "bg-primary text-white shadow-primary/30"
             )}
           >
-            <Camera size={32} />
+            <Camera size={28} />
           </button>
         </div>
         <NavButton 
+          id="nav-chat"
           active={activeTab === 'chat'} 
           onClick={() => setActiveTab('chat')} 
           icon={<MessageSquare size={18} />} 
           label="Bot" 
         />
         <NavButton 
+          id="nav-profile"
           active={activeTab === 'profile'} 
           onClick={() => setActiveTab('profile')} 
           icon={<UserIcon size={18} />} 
@@ -157,9 +169,10 @@ export default function App() {
   );
 }
 
-function NavButton({ active, onClick, icon, label }: { active: boolean; onClick: () => void; icon: React.ReactNode; label: string }) {
+function NavButton({ active, onClick, icon, label, id }: { active: boolean; onClick: () => void; icon: React.ReactNode; label: string; id?: string }) {
   return (
     <button
+      id={id}
       onClick={onClick}
       className={cn(
         "flex flex-col items-center justify-center space-y-1 transition-all w-12 rounded-xl py-1",

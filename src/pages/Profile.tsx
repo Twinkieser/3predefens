@@ -6,33 +6,112 @@
 import React, { useState, useEffect } from 'react';
 import { User as FirebaseUser } from 'firebase/auth';
 import { db, handleFirestoreError, OperationType } from '../lib/firebase';
-import { doc, getDoc, collection, query, orderBy, limit, getDocs, setDoc, updateDoc, increment } from 'firebase/firestore';
+import { doc, getDoc, collection, query, orderBy, limit, getDocs, setDoc, updateDoc, increment, where, serverTimestamp, Timestamp } from 'firebase/firestore';
 import { UserProfile, ScanRecord, getLevel, getNextLevel } from '../types';
-import { motion } from 'motion/react';
+import { generateAvatar } from '../services/ai';
+import { motion, AnimatePresence } from 'motion/react';
 import { toast } from 'sonner';
-import { Settings, LogOut, Award, Clock, History, Search, ChevronRight, Recycle } from 'lucide-react';
+import { Settings, LogOut, Award, Clock, History, Search, ChevronRight, Recycle, Loader2, TrendingUp, User as UserIcon, RefreshCw, Sparkles, Camera, X } from 'lucide-react';
 import { cn, formatDate } from '../lib/utils';
 
 interface ProfileProps {
   user: FirebaseUser | null;
   onLogin: () => void;
   onLogout: () => void;
+  onNavigate: (tab: any) => void;
 }
 
-export default function Profile({ user, onLogin, onLogout }: ProfileProps) {
+export default function Profile({ user, onLogin, onLogout, onNavigate }: ProfileProps) {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [scans, setScans] = useState<ScanRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [generatingAvatar, setGeneratingAvatar] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [editingName, setEditingName] = useState('');
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (user) {
       loadProfile();
       loadScans();
+      setEditingName(user.displayName || '');
     } else {
       setLoading(false);
     }
   }, [user]);
+
+  const handleUpdateDisplayName = async () => {
+    if (!user || !editingName.trim()) return;
+    const toastId = toast.loading('Updating name...');
+    try {
+      await updateDoc(doc(db, 'users', user.uid), {
+        displayName: editingName.trim()
+      });
+      setProfile(prev => prev ? { ...prev, displayName: editingName.trim() } : null);
+      toast.success('Display name updated!', { id: toastId });
+      setIsSettingsOpen(false);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, `users/${user.uid}`);
+      toast.error('Failed to update name', { id: toastId });
+    }
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !user) return;
+
+    if (!file.type.startsWith('image/')) {
+      toast.error('Please select an image file');
+      return;
+    }
+
+    if (file.size > 1024 * 1024) {
+      toast.error('Image is too large (max 1MB)');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      const base64 = event.target?.result as string;
+      const toastId = toast.loading('Uploading picture...');
+      try {
+        await updateDoc(doc(db, 'users', user.uid), {
+          photoURL: base64
+        });
+        setProfile(prev => prev ? { ...prev, photoURL: base64 } : null);
+        toast.success('Profile picture updated!', { id: toastId });
+      } catch (error) {
+        handleFirestoreError(error, OperationType.WRITE, `users/${user.uid}`);
+        toast.error('Failed to update picture', { id: toastId });
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleGenerateAvatar = async (name: string) => {
+    if (generatingAvatar || !user) return;
+    setGeneratingAvatar(true);
+    const toastId = toast.loading('Creating your unique AI avatar...');
+    try {
+      const avatarUrl = await generateAvatar(name);
+      if (avatarUrl) {
+        await updateDoc(doc(db, 'users', user.uid), {
+          photoURL: avatarUrl
+        });
+        setProfile(prev => prev ? { ...prev, photoURL: avatarUrl } : null);
+        toast.success('Your unique avatar is ready!', { id: toastId });
+      } else {
+        toast.error('Failed to create avatar. Please try again.', { id: toastId });
+      }
+    } catch (error) {
+      console.error('Avatar generation error:', error);
+      handleFirestoreError(error, OperationType.WRITE, `users/${user.uid}`);
+      toast.error('Failed to update profile with new avatar.', { id: toastId });
+    } finally {
+      setGeneratingAvatar(false);
+    }
+  };
 
   const loadProfile = async () => {
     try {
@@ -40,10 +119,18 @@ export default function Profile({ user, onLogin, onLogout }: ProfileProps) {
       if (userDoc.exists()) {
         const data = userDoc.data() as UserProfile;
         
+        // Auto-generate if missing
+        if (!data.photoURL && !user?.photoURL) {
+          handleGenerateAvatar(data.displayName || user?.displayName || 'Eco Explorer');
+        }
+        
         // Streak Logic
-        const lastActive = new Date(data.lastActive);
+        const lastActiveDate = (data.lastActive as any) instanceof Timestamp 
+          ? (data.lastActive as any).toDate() 
+          : new Date(data.lastActive);
+        
         const today = new Date();
-        const diffDays = Math.floor((today.getTime() - lastActive.getTime()) / (1000 * 60 * 60 * 24));
+        const diffDays = Math.floor((today.getTime() - lastActiveDate.getTime()) / (1000 * 60 * 60 * 24));
         
         if (diffDays === 1) {
           // Increment streak
@@ -51,28 +138,38 @@ export default function Profile({ user, onLogin, onLogout }: ProfileProps) {
             ...data,
             streak: data.streak + 1,
             points: data.points + 5, // Daily bonus
-            lastActive: Date.now()
+            lastActive: Date.now() // For local state
           };
-          await updateDoc(doc(db, 'users', user!.uid), {
-            streak: increment(1),
-            points: increment(5),
-            lastActive: Date.now()
-          });
-          setProfile(updatedProfile);
-          toast.success('Daily streak! +5 points');
+          try {
+            await updateDoc(doc(db, 'users', user!.uid), {
+              streak: increment(1),
+              points: increment(5),
+              lastActive: serverTimestamp()
+            });
+            setProfile(updatedProfile);
+            toast.success('Daily streak! +5 points');
+          } catch (writeError) {
+            handleFirestoreError(writeError, OperationType.WRITE, `users/${user!.uid}`);
+            setProfile(data); // Fallback to existing data
+          }
         } else if (diffDays > 1) {
           // Reset streak
-          await updateDoc(doc(db, 'users', user!.uid), {
-            streak: 1,
-            lastActive: Date.now()
-          });
-          setProfile({ ...data, streak: 1, lastActive: Date.now() });
+          try {
+            await updateDoc(doc(db, 'users', user!.uid), {
+              streak: 1,
+              lastActive: serverTimestamp()
+            });
+            setProfile({ ...data, streak: 1, lastActive: Date.now() });
+          } catch (writeError) {
+            handleFirestoreError(writeError, OperationType.WRITE, `users/${user!.uid}`);
+            setProfile(data);
+          }
         } else {
           setProfile(data);
         }
       } else {
         // Init profile
-        const newProfile: UserProfile = {
+        const newProfile: any = {
           uid: user!.uid,
           email: user!.email || '',
           displayName: user!.displayName || 'Eco User',
@@ -80,13 +177,22 @@ export default function Profile({ user, onLogin, onLogout }: ProfileProps) {
           points: 50, // Welcome bonus
           level: 'Beginner',
           badges: ['First Step'],
-          createdAt: Date.now(),
-          lastActive: Date.now(),
+          createdAt: serverTimestamp(),
+          lastActive: serverTimestamp(),
           streak: 1
         };
-        await setDoc(doc(db, 'users', user!.uid), newProfile);
-        setProfile(newProfile);
-        toast.success('Welcome! +50 points bonus earned.');
+        try {
+          await setDoc(doc(db, 'users', user!.uid), newProfile);
+          setProfile({ ...newProfile, createdAt: Date.now(), lastActive: Date.now() });
+          toast.success('Welcome! +50 points bonus earned.');
+          
+          // Auto-generate if missing
+          if (!newProfile.photoURL && !user?.photoURL) {
+            handleGenerateAvatar(newProfile.displayName);
+          }
+        } catch (writeError) {
+          handleFirestoreError(writeError, OperationType.WRITE, `users/${user!.uid}`);
+        }
       }
     } catch (error) {
       handleFirestoreError(error, OperationType.GET, `users/${user!.uid}`);
@@ -97,13 +203,14 @@ export default function Profile({ user, onLogin, onLogout }: ProfileProps) {
     try {
       const scansQuery = query(
         collection(db, `users/${user!.uid}/scans`),
+        where('uid', '==', user!.uid),
         orderBy('createdAt', 'desc'),
         limit(20)
       );
       const snapshot = await getDocs(scansQuery);
       setScans(snapshot.docs.map(d => d.data() as ScanRecord));
     } catch (error) {
-       console.error("Failed to load scans", error);
+      handleFirestoreError(error, OperationType.GET, `users/${user!.uid}/scans`);
     } finally {
       setLoading(false);
     }
@@ -143,15 +250,140 @@ export default function Profile({ user, onLogin, onLogout }: ProfileProps) {
   const filteredScans = scans.filter(s => s.category.includes(search.toLowerCase()));
 
   return (
-    <div className="bg-accent min-h-full p-6 space-y-6 pb-24 font-sans">
+    <div className="bg-accent min-h-full p-6 space-y-6 font-sans">
       <div className="flex items-center justify-between px-2">
         <div className="space-y-1">
           <h1 className="text-2xl font-black text-primary-dark italic tracking-tighter">My Progress</h1>
           <p className="label-caps font-black uppercase text-primary/40">Sustainability Journey</p>
         </div>
-        <button className="w-10 h-10 bg-white rounded-2xl border border-primary-light flex items-center justify-center text-primary-dark shadow-sm">
+        <button 
+          onClick={() => setIsSettingsOpen(true)}
+          className="w-10 h-10 bg-white rounded-2xl border border-primary-light flex items-center justify-center text-primary-dark shadow-sm hover:bg-primary-light transition-colors"
+        >
           <Settings size={18} />
         </button>
+      </div>
+
+      <AnimatePresence>
+        {isSettingsOpen && (
+          <div className="fixed inset-0 z-[2000] flex items-center justify-center p-6">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setIsSettingsOpen(false)}
+              className="absolute inset-0 bg-primary-dark/40 backdrop-blur-sm"
+            />
+            <motion.div 
+              initial={{ scale: 0.9, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.9, opacity: 0, y: 20 }}
+              className="relative w-full max-w-sm bg-white rounded-3xl shadow-2xl p-8 space-y-6"
+            >
+              <div className="flex justify-between items-center">
+                <h3 className="text-xl font-black text-primary-dark italic tracking-tighter">Settings</h3>
+                <button onClick={() => setIsSettingsOpen(false)} className="text-primary-dark/20 hover:text-primary-dark">
+                  <X size={20} />
+                </button>
+              </div>
+
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black uppercase tracking-widest text-primary-dark/40 px-1">Display Name</label>
+                  <input 
+                    type="text" 
+                    value={editingName}
+                    onChange={(e) => setEditingName(e.target.value)}
+                    className="w-full bg-accent border border-primary-light rounded-2xl px-4 py-3 text-sm font-bold text-primary-dark outline-none focus:ring-2 focus:ring-primary/20"
+                    placeholder="Your display name"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                   <label className="text-[10px] font-black uppercase tracking-widest text-primary-dark/40 px-1">Your ID</label>
+                   <div className="w-full bg-accent/50 border border-dashed border-primary-light rounded-2xl px-4 py-3 text-[10px] font-mono text-primary-dark/40 truncate">
+                     {user?.uid}
+                   </div>
+                </div>
+              </div>
+
+              <div className="pt-2 flex flex-col gap-3">
+                <button 
+                  onClick={handleUpdateDisplayName}
+                  className="w-full bg-primary text-white py-4 rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl shadow-primary/20 active:scale-95 transition-all"
+                >
+                  Save Changes
+                </button>
+                <button 
+                  onClick={onLogout}
+                  className="w-full bg-red-50 text-red-500 py-4 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-red-100 active:scale-95 transition-all flex items-center justify-center gap-2"
+                >
+                  <LogOut size={16} /> Logout
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Avatar Section */}
+      <div className="flex flex-col items-center py-4">
+        <motion.div 
+          initial={{ scale: 0.8, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          className="relative group"
+        >
+          <input 
+            type="file"
+            ref={fileInputRef}
+            onChange={handleFileUpload}
+            accept="image/*"
+            className="hidden"
+          />
+          <div className="w-28 h-28 rounded-full p-1 bg-gradient-to-tr from-primary to-primary-light shadow-2xl shadow-primary/20">
+            <div className="w-full h-full rounded-full bg-white flex items-center justify-center overflow-hidden border-2 border-white relative">
+              {generatingAvatar && (
+                <div className="absolute inset-0 z-20 bg-primary/20 backdrop-blur-sm flex items-center justify-center">
+                  <Sparkles size={24} className="text-primary animate-pulse" />
+                </div>
+              )}
+              {profile?.photoURL || user?.photoURL ? (
+                <img 
+                  src={profile?.photoURL || user?.photoURL || ''} 
+                  alt={profile?.displayName || 'User'} 
+                  className="w-full h-full object-cover"
+                  referrerPolicy="no-referrer"
+                />
+              ) : (
+                <UserIcon size={40} className="text-primary-dark/20" />
+              )}
+            </div>
+          </div>
+          <div className="absolute -bottom-1 -left-1 w-8 h-8 bg-primary rounded-xl border-4 border-white flex items-center justify-center text-white shadow-lg">
+            <Award size={14} />
+          </div>
+          <button 
+            onClick={() => fileInputRef.current?.click()}
+            className="absolute -bottom-1 -right-1 w-8 h-8 bg-primary-dark rounded-xl border-4 border-white flex items-center justify-center text-white shadow-lg hover:scale-110 active:scale-95 transition-all"
+            title="Upload Profile Picture"
+          >
+            <Camera size={14} />
+          </button>
+          {!user?.photoURL && (
+            <button 
+              disabled={generatingAvatar}
+              onClick={() => handleGenerateAvatar(profile?.displayName || user?.displayName || 'Eco Explorer')}
+              className="absolute -top-1 -right-1 w-8 h-8 bg-black/80 backdrop-blur-md rounded-xl border-4 border-white flex items-center justify-center text-white shadow-lg hover:bg-black transition-colors disabled:opacity-50"
+              title={profile?.photoURL ? "Regenerate AI Avatar" : "Generate AI Avatar"}
+            >
+              {generatingAvatar ? <Loader2 size={12} className="animate-spin text-primary" /> : profile?.photoURL ? <RefreshCw size={12} /> : <Sparkles size={12} />}
+            </button>
+          )}
+        </motion.div>
+        <div className="mt-4 text-center">
+          <h2 className="text-xl font-black text-primary-dark tracking-tight">{profile?.displayName || user?.displayName || 'Eco Explorer'}</h2>
+          <p className="text-[10px] font-bold text-primary-dark/40 uppercase tracking-[0.2em]">{profile?.email || user?.email}</p>
+        </div>
       </div>
 
       <div className="space-y-6">
@@ -179,10 +411,10 @@ export default function Profile({ user, onLogin, onLogout }: ProfileProps) {
              animate={{ opacity: 1, x: 0 }}
              className="bento-card bg-primary-dark p-6 flex flex-col justify-between text-white"
           >
-             <div className="text-[9px] font-bold uppercase tracking-widest text-primary-light/40 mb-2">Streak</div>
+             <div className="text-[9px] font-bold uppercase tracking-widest text-black mb-2">Streak</div>
              <div className="flex items-end gap-1">
-                <span className="text-3xl font-black">{profile?.streak || 0}</span>
-                <span className="text-xs font-bold text-primary mb-1 italic">Days</span>
+                <span className="text-3xl font-black text-black">{profile?.streak || 0}</span>
+                <span className="text-xs font-bold text-black mb-1 italic">Days</span>
              </div>
              <div className="mt-4 flex gap-1">
                 {[1,2,3,4,5].map(i => (
@@ -213,6 +445,23 @@ export default function Profile({ user, onLogin, onLogout }: ProfileProps) {
              <Recycle size={180} />
           </div>
         </motion.div>
+
+        {/* Analytics Entry */}
+        <button 
+          onClick={() => onNavigate('reports')}
+          className="w-full bento-card p-5 flex items-center justify-between border-primary-light hover:bg-primary-light/10 transition-colors"
+        >
+           <div className="flex items-center gap-4">
+              <div className="w-10 h-10 bg-primary/10 rounded-xl flex items-center justify-center text-primary">
+                 <TrendingUp size={20} />
+              </div>
+              <div className="text-left">
+                 <h4 className="text-xs font-black text-primary-dark uppercase tracking-tight">Full Insights</h4>
+                 <p className="text-[9px] text-primary-dark/40 font-bold uppercase tracking-widest">Sustainability Analytics</p>
+              </div>
+           </div>
+           <ChevronRight size={16} className="text-primary" />
+        </button>
 
         {/* Activity Section */}
         <section className="space-y-4">

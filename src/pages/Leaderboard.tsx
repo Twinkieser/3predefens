@@ -4,8 +4,8 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { db } from '../lib/firebase';
-import { collection, query, orderBy, limit, getDocs } from 'firebase/firestore';
+import { db, handleFirestoreError, OperationType } from '../lib/firebase';
+import { collection, query, orderBy, limit, getDocs, where } from 'firebase/firestore';
 import { motion } from 'motion/react';
 import { Trophy, Medal, ChevronUp, Star } from 'lucide-react';
 import { cn } from '../lib/utils';
@@ -22,6 +22,7 @@ export default function LeaderboardPage() {
     try {
       const q = query(
         collection(db, 'users'),
+        where('points', '>', 0),
         orderBy('points', 'desc'),
         limit(10)
       );
@@ -40,13 +41,14 @@ export default function LeaderboardPage() {
         { rank: 4, displayName: 'Daniyar M.', points: 850, photoURL: '' },
         { rank: 5, displayName: 'Yersultan O.', points: 720, photoURL: '' },
       ]);
+      handleFirestoreError(error, OperationType.LIST, 'users');
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-full bg-accent flex flex-col pb-24 font-sans">
+    <div className="min-h-full bg-accent flex flex-col font-sans">
       {/* Top Header Bento */}
       <div className="bg-primary-dark p-8 rounded-b-[3rem] text-white flex flex-col items-center space-y-12 shadow-2xl pt-16 relative overflow-hidden">
         {/* Abstract Background Element */}
@@ -138,8 +140,12 @@ export default function LeaderboardPage() {
            >
              <div className="flex items-center space-x-4">
                 <span className="w-6 text-[10px] font-black text-primary/30 text-center tracking-tighter italic">#{leader.rank}</span>
-                <div className="w-10 h-10 rounded-xl bg-accent flex items-center justify-center font-black text-primary-dark/20 text-lg">
-                  {leader.displayName[0]}
+                <div className="w-10 h-10 rounded-xl bg-accent flex items-center justify-center font-black text-primary-dark/20 text-lg overflow-hidden relative">
+                  {leader.photoURL ? (
+                    <img src={leader.photoURL} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                  ) : (
+                    leader.displayName[0]
+                  )}
                 </div>
                 <div>
                    <h3 className="text-xs font-black text-primary-dark italic tracking-tight leading-none pb-1">{leader.displayName}</h3>

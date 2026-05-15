@@ -9,63 +9,73 @@ service cloud.firestore {
 
     // --- Helpers ---
     function isSignedIn() { return request.auth != null; }
-    function isOwner(userId) { return isSignedIn() && request.auth.uid == userId; }
-    function isVerified() { return isSignedIn() && (request.auth.token.email_verified == true || request.auth.token.firebase.sign_in_provider == 'google.com'); }
+    function isVerified() { return isSignedIn() && request.auth.token.email_verified == true; }
+    function isOwner(uid) { return isSignedIn() && request.auth.uid == uid; }
+    function isValidId(id) { return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); }
     function incoming() { return request.resource.data; }
     function existing() { return resource.data; }
-    
-    function isValidId(id) { 
-      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); 
-    }
 
-    // --- Entity Validations ---
+    // --- Validation Helpers ---
+    
     function isValidUser(data) {
-      return data.uid is string && data.uid == request.auth.uid &&
-             data.points is int && data.points >= 0 &&
-             data.level in ['Beginner', 'Explorer', 'Recycler', 'Eco Hero', 'Eco Warrior'] &&
-             data.keys().hasAll(['uid', 'email', 'points', 'level']) &&
-             data.keys().size() <= 10;
+      return data.uid is string &&
+             data.email is string &&
+             data.displayName is string &&
+             (data.photoURL == null || data.photoURL is string) &&
+             data.points is number &&
+             data.streak is number &&
+             data.level is string &&
+             data.badges is list &&
+             (data.createdAt == null || data.createdAt is timestamp) &&
+             (data.lastActive == null || data.lastActive is timestamp || data.lastActive is number);
     }
 
     function isValidScan(data) {
-      return data.uid is string && data.uid == request.auth.uid &&
-             data.category in ['plastic', 'glass', 'paper', 'metal', 'cardboard', 'trash'] &&
-             data.confidence is number && data.confidence >= 0 && data.confidence <= 1 &&
-             data.pointsEarned is int && data.pointsEarned >= 0 &&
-             data.keys().hasAll(['uid', 'category', 'confidence', 'pointsEarned', 'createdAt']) &&
-             data.keys().size() <= 12;
+      return data.uid is string &&
+             data.id is string &&
+             (data.imageUrl == null || data.imageUrl is string) &&
+             data.category is string &&
+             data.confidence is number &&
+             data.pointsEarned is number &&
+             data.tips is string &&
+             data.instructions is string;
     }
 
     // --- Collection Rules ---
+
     match /users/{userId} {
+      // Identity Pillar: Owner can get their own doc (or any user if we allow it)
       allow get: if isSignedIn();
-      allow list: if isSignedIn() && resource.data.points > 0; // For leaderboard queries
       
-      allow create: if isOwner(userId) && isVerified() && isValidUser(incoming());
+      // Leaderboard Pillar: Signed in users can list profiles (needed for rank/stats)
+      allow list: if isSignedIn();
       
-      allow update: if isOwner(userId) && isVerified() && (
-        // Action: Update points/stats after scan or daily
-        (incoming().diff(existing()).affectedKeys().hasOnly(['points', 'lastActive', 'level', 'streak', 'badges']) &&
-         incoming().points >= existing().points)
-      );
-    }
-
-    match /users/{userId}/scans/{scanId} {
-      allow list: if isOwner(userId);
-      allow get: if isOwner(userId);
-      
-      // Scans are immutable once created
       allow create: if isOwner(userId) && isVerified() && 
-                    isValidId(scanId) && isValidScan(incoming()) &&
-                    incoming().createdAt == request.time;
+                      isValidUser(incoming()) &&
+                      incoming().uid == request.auth.uid;
       
-      allow update, delete: if false;
+      allow update: if isOwner(userId) && isVerified() && 
+                      isValidUser(incoming()) &&
+                      incoming().uid == existing().uid;
+
+      match /scans/{scanId} {
+        // Access Pillar
+        allow get: if isOwner(userId);
+        
+        // Query Pillar
+        allow list: if isOwner(userId);
+        
+        allow create: if isOwner(userId) && isVerified() &&
+                        isValidScan(incoming()) &&
+                        incoming().uid == request.auth.uid;
+        
+        allow delete: if isOwner(userId) && isVerified();
+      }
     }
 
-    // Global stats (leaderboard snapshots) if used
-    match /globalStats/leaderboard {
+    match /globalStats/{docId} {
       allow read: if isSignedIn();
-      allow write: if false; // System only
+      allow write: if false;
     }
   }
 }
